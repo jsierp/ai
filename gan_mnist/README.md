@@ -6,6 +6,9 @@ Run with
 ```python main.py --name name_of_the_experiment```
 Make sure your CUDA is available, see **main.py** for all parameters.
 
+Weights of an already pretrained model (50 epochs) are available in runs/3layers_gan_mnist/checkpoint.pth.
+See load_model in **main.py** for loading details.
+
 ## Model architecture
 I chose quite small sizes of models, with 3 convolutional layers for both the discriminator and (de-convolutional) for the generator, to make the model train quickly. Probably with additional layers the results would look more realistic, but my hardware limited the possibilities of the experiments.
 ## Dicriminator
@@ -28,7 +31,7 @@ Discriminator(
 )
 ```
 ## Generator
-```
+```python
 Generator(
   (linear): Linear(in_features=100, out_features=4096, bias=True)
   (lrelu): LeakyReLU(negative_slope=0.2)

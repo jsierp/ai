@@ -13,7 +13,7 @@ from generator import Generator
 from pathlib import Path
 
 
-IMAGE_SIZE = 28
+IMAGE_SIZE = 32
 
 
 def save_images(images: np.ndarray, path: Path) -> None:
@@ -39,6 +39,10 @@ def start_new_epoch(logs: list) -> None:
     )
 
 
+def normalize(image):
+    return image * 2 - 1
+
+
 def log_batch(
     log: dict,
     real_acc: float,
@@ -61,6 +65,37 @@ def save_logs(logs: list, path: Path) -> None:
         pickle.dump(logs, file)
 
 
+def save_model(
+    epoch, generator, g_optimizer, discriminator, d_optimizer, checkpoint_path: Path
+) -> None:
+    torch.save(
+        {
+            "epoch": epoch,
+            "generator_state_dict": generator.state_dict(),
+            "g_optimizer_state_dict": g_optimizer.state_dict(),
+            "discriminator_state_dict": discriminator.state_dict(),
+            "d_optimizer_state_dict": d_optimizer.state_dict(),
+        },
+        checkpoint_path,
+    )
+
+
+def load_model(
+    generator, g_optimizer, discriminator, d_optimizer, checkpoint_path: Path
+) -> int:
+    checkpoint = torch.load(checkpoint_path)
+    generator.load_state_dict(checkpoint["generator_state_dict"])
+    g_optimizer.load_state_dict(checkpoint["g_optimizer_state_dict"])
+    discriminator.load_state_dict(checkpoint["discriminator_state_dict"])
+    d_optimizer.load_state_dict(checkpoint["d_optimizer_state_dict"])
+    return checkpoint["epoch"]
+
+
+def ensure_dir(path: Path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+
 def main(
     epochs: int,
     batch_size: int,
@@ -69,20 +104,26 @@ def main(
     learning_rate: float,
     device: torch.device,
     data_root: Path,
+    name: str,
     preview_length: int,
 ) -> None:
     print("Device", device)
 
-    if not os.path.exists(data_root):
-        os.makedirs(data_root)
-    if not os.path.exists(data_root / "epochs"):
-        os.makedirs(data_root / "epochs")
+    ensure_dir(data_root)
+    ensure_dir(data_root / name)
+    ensure_dir(data_root / name / "epochs")
 
     train_data = datasets.MNIST(
         root=data_root,
         train=True,
         download=True,
-        transform=transforms.Compose([transforms.ToTensor()]),
+        transform=transforms.Compose(
+            [
+                transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+                transforms.ToTensor(),
+                normalize,
+            ]
+        ),
     )
 
     save_images(
@@ -106,11 +147,22 @@ def main(
         train_data, batch_size=batch_size, shuffle=True, num_workers=workers
     )
 
-    _ = discriminator.train()
-    _ = generator.train()
+    checkpoint_path = data_root / name / "checkpoint.pth"
+    if checkpoint_path.is_file():
+        epoch = (
+            load_model(
+                generator, g_optimizer, discriminator, d_optimizer, checkpoint_path
+            )
+            + 1
+        )
+    else:
+        epoch = 0
+
+    discriminator.train()
+    generator.train()
 
     logs = []
-    for epoch in range(epochs):
+    for epoch in range(epoch, epochs):
         start_new_epoch(logs)
         for i, (images, _) in enumerate(dataloader):
             # Train discriminator
@@ -167,9 +219,17 @@ def main(
                 X_fake = generator(fixed_points)
                 save_images(
                     X_fake.detach().cpu().numpy().reshape((-1, IMAGE_SIZE, IMAGE_SIZE)),
-                    data_root / "epochs" / f"{epoch}_{i}.png",
+                    data_root / name / "epochs" / f"{epoch}_{i}.png",
                 )
-        save_logs(logs, data_root / "logs")
+        save_model(
+            epoch,
+            generator,
+            g_optimizer,
+            discriminator,
+            d_optimizer,
+            checkpoint_path,
+        )
+        save_logs(logs, data_root / name / "logs")
 
 
 if __name__ == "__main__":
@@ -192,6 +252,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data_root", type=str, default="data", help="data directory path"
     )
+    parser.add_argument("--name", type=str, help="experiment name")
     parser.add_argument(
         "--preview_length", type=int, default=25, help="number of samples in preview"
     )
@@ -204,5 +265,6 @@ if __name__ == "__main__":
         args.lr,
         torch.device("cuda") if args.cuda else torch.device("cpu"),
         Path(args.data_root),
+        args.name,
         args.preview_length,
     )

@@ -6,7 +6,7 @@ class DownConv(nn.Module):
     def __init__(self, in_ch, out_ch):
         super(DownConv, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(in_ch, out_ch, kernel_size=4, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(out_ch),
             nn.LeakyReLU(0.2),
         )
@@ -21,7 +21,7 @@ class UpConv(nn.Module):
         super(UpConv, self).__init__()
         self.conv = nn.Sequential(
             nn.ConvTranspose2d(
-                in_ch, out_ch, kernel_size=4, stride=2, padding=1
+                in_ch, out_ch, kernel_size=4, stride=2, padding=1, bias=False
             ),
             nn.BatchNorm2d(out_ch),
             nn.ReLU(),
@@ -37,10 +37,9 @@ class UpConvDropout(nn.Module):
         super(UpConvDropout, self).__init__()
         self.conv = nn.Sequential(
             nn.ConvTranspose2d(
-                in_ch, out_ch, kernel_size=4, stride=2, padding=1
+                in_ch, out_ch, kernel_size=4, stride=2, padding=1, bias=False
             ),
             nn.BatchNorm2d(out_ch),
-            nn.Dropout(0.5),
             nn.ReLU(),
         )
 
@@ -123,5 +122,37 @@ class Discriminator(nn.Module):
         x = self.down2(x)
         x = self.down3(x)
         x = self.down4(x)
+        x = self.outconv(x)
+        return x
+
+class Discriminator256(nn.Module):
+    def __init__(self, in_channels):
+        super(Discriminator256, self).__init__()
+
+        self.down1 = nn.Sequential(
+            nn.Conv2d(in_channels, 64, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
+        )
+        self.down2 = DownConv(64, 128)
+        self.down3 = DownConv(128, 256)
+        self.down4 = DownConv(256, 512)
+        self.down5 = DownConv(512, 512)
+        self.down6 = nn.Sequential(
+            nn.Conv2d(512, 512, kernel_size=4, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2),
+        )
+        self.outconv = nn.Sequential(
+            nn.Conv2d(512, 1, kernel_size=4, stride=1, padding=1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        x = self.down1(x)
+        x = self.down2(x)
+        x = self.down3(x)
+        x = self.down4(x)
+        x = self.down5(x)
+        x = self.down6(x)
         x = self.outconv(x)
         return x
